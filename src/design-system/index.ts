@@ -9,6 +9,11 @@
 export { Button, type ButtonProps } from './primitives/Button';
 export { Card } from './primitives/Card';
 export { Input, type InputProps } from './primitives/Input';
+export { Badge } from './primitives/Badge';
+export { Spinner } from './primitives/Spinner';
+export { Tabs } from './primitives/Tabs';
+export { CommandBar } from './primitives/CommandBar';
+export { Combobox, type ComboboxOption } from './primitives/Combobox';
 
 // Tokens
 export * as tokens from './tokens';

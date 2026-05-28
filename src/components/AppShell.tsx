@@ -29,7 +29,7 @@ export function AppShell({ children, header, sidebar }: AppShellProps) {
       <div className="flex flex-1 max-w-[1600px] mx-auto w-full">
         {/* Left Sidebar / Navigation */}
         {sidebar && (
-          <aside className="w-64 border-r border-hal-border bg-hal-bg-1/50 p-4 hidden lg:block">
+          <aside className="w-72 border-r border-hal-border bg-gradient-to-b from-hal-bg-1/80 to-hal-bg-1/45 p-4 hidden lg:block">
             {sidebar}
           </aside>
         )}

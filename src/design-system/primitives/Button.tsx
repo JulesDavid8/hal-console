@@ -7,8 +7,8 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        primary: 'bg-hal-primary text-hal-bg-0 hover:brightness-105 shadow-[var(--hal-glow-soft)]',
-        secondary: 'border border-hal-border text-hal-text hover:bg-hal-panel-soft',
+        primary: 'bg-hal-primary text-[#06101a] hover:brightness-105 shadow-[var(--hal-glow-soft)]',
+        secondary: 'border border-hal-border text-hal-text hover:border-hal-primary/45 hover:bg-hal-panel-soft',
         ghost: 'text-hal-text hover:bg-hal-panel-soft',
         danger: 'bg-hal-danger text-white hover:brightness-105',
       },

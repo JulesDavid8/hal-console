@@ -1,55 +1,45 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* =========================================================
-   H.A.L. Compass — Production Design Tokens (Foundation 2026)
-   These variables are the single source of truth for the visual language.
-   All components and features should reference these or Tailwind's hal- utilities.
-   ========================================================= */
-
 :root {
   color-scheme: dark;
 
-  /* Core Backgrounds */
-  --hal-bg-0: #020705;
-  --hal-bg-1: #04100b;
-  --hal-bg-2: #0a1b13;
+  --hal-bg-0: #070c14;
+  --hal-bg-1: #0d1420;
+  --hal-bg-2: #151f2d;
 
-  /* Surfaces */
-  --hal-panel: rgba(6, 26, 16, 0.76);
-  --hal-panel-soft: rgba(8, 34, 21, 0.56);
-  --hal-panel-border: rgba(106, 255, 164, 0.24);
-  --hal-panel-border-strong: rgba(150, 255, 190, 0.52);
+  --hal-panel: rgba(17, 27, 41, 0.8);
+  --hal-panel-soft: rgba(25, 38, 56, 0.62);
+  --hal-panel-border: rgba(118, 138, 168, 0.28);
+  --hal-panel-border-strong: rgba(152, 176, 212, 0.44);
 
-  /* Text */
-  --hal-text: #d8ffe9;
-  --hal-text-soft: #b6e9c9;
-  --hal-text-muted: #7fb79a;
+  --hal-text: #e8eef8;
+  --hal-text-soft: #c8d2e3;
+  --hal-text-muted: #8fa0b9;
 
-  /* Accents */
-  --hal-primary: #6dffab;
-  --hal-primary-soft: rgba(109, 255, 171, 0.24);
-  --hal-accent: #c8ff71;
-  --hal-cyan: #67f3d2;
-  --hal-danger: #ff6a86;
-  --hal-warning: #ffd461;
+  --hal-primary: #59c8ff;
+  --hal-primary-soft: rgba(89, 200, 255, 0.2);
+  --hal-accent: #f3c969;
+  --hal-cyan: #7ce5ff;
+  --hal-danger: #ff7f92;
+  --hal-warning: #f3c969;
+  --hal-success: #62d3a0;
+  --hal-phosphor: #79d3a7;
 
-  /* Subtle Effects */
-  --hal-grid: rgba(109, 255, 171, 0.07);
-  --hal-line: rgba(129, 255, 183, 0.14);
+  --hal-grid: rgba(106, 137, 179, 0.08);
+  --hal-line: rgba(131, 166, 211, 0.18);
 
-  /* Effects */
-  --hal-glow: 0 0 30px rgba(109, 255, 171, 0.24);
-  --hal-glow-soft: 0 0 14px rgba(109, 255, 171, 0.18);
+  --hal-glow: 0 0 30px rgba(89, 200, 255, 0.24);
+  --hal-glow-soft: 0 0 14px rgba(89, 200, 255, 0.18);
 
-  /* Radii */
   --hal-radius-sm: 8px;
-  --hal-radius-md: 14px;
-  --hal-radius-lg: 22px;
+  --hal-radius-md: 12px;
+  --hal-radius-lg: 20px;
 }
 
-/* Base Application Styles */
 html,
 body,
 #root {
@@ -57,31 +47,119 @@ body,
 }
 
 body {
+  margin: 0;
   background:
-    radial-gradient(circle at 16% 12%, rgba(109, 255, 171, 0.12), transparent 28%),
-    radial-gradient(circle at 82% 16%, rgba(103, 243, 210, 0.08), transparent 24%),
-    linear-gradient(180deg, var(--hal-bg-0), var(--hal-bg-1) 42%, #010403 100%);
+    radial-gradient(circle at 12% 10%, rgba(124, 229, 255, 0.12), transparent 28%),
+    radial-gradient(circle at 86% 12%, rgba(243, 201, 105, 0.09), transparent 26%),
+    linear-gradient(180deg, var(--hal-bg-0), var(--hal-bg-1) 45%, #080f1a 100%);
   color: var(--hal-text);
-  font-family: "Share Tech Mono", "IBM Plex Mono", "SF Mono", monospace;
+  font-family: 'Space Grotesk', 'IBM Plex Sans', 'Segoe UI', sans-serif;
   -webkit-font-smoothing: antialiased;
+  text-rendering: geometricPrecision;
 }
 
-/* High-quality focus styles for accessibility & professionalism */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(transparent 0, transparent 95%, var(--hal-grid) 100%),
+    linear-gradient(90deg, transparent 0, transparent 95%, var(--hal-grid) 100%);
+  background-size: 40px 40px;
+  opacity: 0.25;
+  z-index: -1;
+}
+
+.mono,
+table,
+.kbd,
+.code {
+  font-family: 'IBM Plex Mono', 'SF Mono', 'Cascadia Code', monospace;
+}
+
 :focus-visible {
   outline: 2px solid var(--hal-primary);
   outline-offset: 2px;
 }
 
-/* Utility for the signature H.A.L. panel look */
 .hal-panel {
-  background: var(--hal-panel);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0)), var(--hal-panel);
   border: 1px solid var(--hal-panel-border);
   border-radius: var(--hal-radius-md);
-  box-shadow: var(--hal-glow-soft);
+  box-shadow: 0 4px 22px rgba(5, 9, 16, 0.34);
 }
 
-/* Command / console aesthetic helpers */
 .hal-mono {
-  font-family: "Share Tech Mono", monospace;
+  font-family: 'IBM Plex Mono', 'SF Mono', 'Cascadia Code', monospace;
   letter-spacing: 0.02em;
+}
+
+/* Boot opener */
+@keyframes hal-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes hal-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(0.98);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes hal-sweep {
+  from {
+    transform: translateX(-65%);
+  }
+  to {
+    transform: translateX(165%);
+  }
+}
+
+@keyframes hal-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.hal-opener-fade {
+  animation: hal-fade-up 480ms ease-out both;
+}
+
+.hal-orbit {
+  animation: hal-spin 8s linear infinite;
+}
+
+.hal-orbit-reverse {
+  animation: hal-spin 13s linear infinite reverse;
+}
+
+.hal-beacon {
+  animation: hal-pulse 1.8s ease-in-out infinite;
+}
+
+.hal-progress-sweep {
+  animation: hal-sweep 1.5s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hal-opener-fade,
+  .hal-orbit,
+  .hal-orbit-reverse,
+  .hal-beacon,
+  .hal-progress-sweep {
+    animation: none;
+  }
 }
