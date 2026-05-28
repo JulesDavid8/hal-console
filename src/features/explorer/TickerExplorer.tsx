@@ -209,7 +209,11 @@ export function TickerExplorer() {
       )}
 
       {!loading && insiders.length === 0 && !error && (
-        <p className="text-hal-muted text-sm">Enter a ticker and click "Load Data" to see recent insider activity and signals.</p>
+        <p className="text-hal-muted text-sm">
+          {signal
+            ? `No recent insider transactions were returned for ${ticker}. Live price/signal context is still available.`
+            : 'Enter a ticker and click "Load Data" to see recent insider activity and signals.'}
+        </p>
       )}
     </div>
   );
