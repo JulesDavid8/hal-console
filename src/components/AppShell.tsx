@@ -4,6 +4,7 @@ interface AppShellProps {
   children: ReactNode;
   header?: ReactNode;
   sidebar?: ReactNode;
+  mainId?: string;
 }
 
 /**
@@ -14,7 +15,7 @@ interface AppShellProps {
  * should be handled by composing or replacing this component, not by scattering
  * layout logic throughout features.
  */
-export function AppShell({ children, header, sidebar }: AppShellProps) {
+export function AppShell({ children, header, sidebar, mainId = 'main-content' }: AppShellProps) {
   return (
     <div className="min-h-screen flex flex-col">
       {/* Top Command Bar */}
@@ -35,7 +36,7 @@ export function AppShell({ children, header, sidebar }: AppShellProps) {
         )}
 
         {/* Main Content Area */}
-        <main className="flex-1 p-6 overflow-auto">
+        <main id={mainId} className="flex-1 p-3 sm:p-6 overflow-auto">
           {children}
         </main>
       </div>
