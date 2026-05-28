@@ -1,0 +1,87 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* =========================================================
+   H.A.L. Compass — Production Design Tokens (Foundation 2026)
+   These variables are the single source of truth for the visual language.
+   All components and features should reference these or Tailwind's hal- utilities.
+   ========================================================= */
+
+:root {
+  color-scheme: dark;
+
+  /* Core Backgrounds */
+  --hal-bg-0: #020705;
+  --hal-bg-1: #04100b;
+  --hal-bg-2: #0a1b13;
+
+  /* Surfaces */
+  --hal-panel: rgba(6, 26, 16, 0.76);
+  --hal-panel-soft: rgba(8, 34, 21, 0.56);
+  --hal-panel-border: rgba(106, 255, 164, 0.24);
+  --hal-panel-border-strong: rgba(150, 255, 190, 0.52);
+
+  /* Text */
+  --hal-text: #d8ffe9;
+  --hal-text-soft: #b6e9c9;
+  --hal-text-muted: #7fb79a;
+
+  /* Accents */
+  --hal-primary: #6dffab;
+  --hal-primary-soft: rgba(109, 255, 171, 0.24);
+  --hal-accent: #c8ff71;
+  --hal-cyan: #67f3d2;
+  --hal-danger: #ff6a86;
+  --hal-warning: #ffd461;
+
+  /* Subtle Effects */
+  --hal-grid: rgba(109, 255, 171, 0.07);
+  --hal-line: rgba(129, 255, 183, 0.14);
+
+  /* Effects */
+  --hal-glow: 0 0 30px rgba(109, 255, 171, 0.24);
+  --hal-glow-soft: 0 0 14px rgba(109, 255, 171, 0.18);
+
+  /* Radii */
+  --hal-radius-sm: 8px;
+  --hal-radius-md: 14px;
+  --hal-radius-lg: 22px;
+}
+
+/* Base Application Styles */
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background:
+    radial-gradient(circle at 16% 12%, rgba(109, 255, 171, 0.12), transparent 28%),
+    radial-gradient(circle at 82% 16%, rgba(103, 243, 210, 0.08), transparent 24%),
+    linear-gradient(180deg, var(--hal-bg-0), var(--hal-bg-1) 42%, #010403 100%);
+  color: var(--hal-text);
+  font-family: "Share Tech Mono", "IBM Plex Mono", "SF Mono", monospace;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* High-quality focus styles for accessibility & professionalism */
+:focus-visible {
+  outline: 2px solid var(--hal-primary);
+  outline-offset: 2px;
+}
+
+/* Utility for the signature H.A.L. panel look */
+.hal-panel {
+  background: var(--hal-panel);
+  border: 1px solid var(--hal-panel-border);
+  border-radius: var(--hal-radius-md);
+  box-shadow: var(--hal-glow-soft);
+}
+
+/* Command / console aesthetic helpers */
+.hal-mono {
+  font-family: "Share Tech Mono", monospace;
+  letter-spacing: 0.02em;
+}
