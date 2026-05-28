@@ -61,7 +61,7 @@ const HUB_ITEMS: HubItem[] = [
     id: 'lab',
     label: 'Lab',
     mobileLabel: 'Lab',
-    description: 'Design system and experiments',
+    description: 'Build scenarios and decision-ready stock intelligence',
     icon: FlaskConical,
   },
 ];
@@ -305,6 +305,9 @@ function App() {
             <h1 ref={pageHeadingRef} tabIndex={-1} className="text-3xl font-medium tracking-tight focus:outline-none">
               Lab
             </h1>
+            <p className="text-hal-muted">
+              Tune inputs and watch decision outputs update in real time.
+            </p>
             {renderLazyModule(<DesignSystemPlayground />)}
           </div>
         );

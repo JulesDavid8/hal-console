@@ -43,6 +43,8 @@ git push
 - The Git repository only contains the `frontend/console` code (this is intentional for clean deployments).
 - Your main working URL is **https://hal-console-git.vercel.app** — treat this as the source of truth.
 - The older aliased URL (hal-console.vercel.app) can be ignored or repurposed later.
+- If `VITE_API_BASE` is not set in Vercel, the app now defaults to built-in `/api/v1` live market routes.
+- If you later deploy a dedicated FastAPI backend, set `VITE_API_BASE` to that backend URL (for example: `https://your-api-domain.com/v1`).
 
 ---
 

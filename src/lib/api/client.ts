@@ -6,7 +6,15 @@
  * Future enhancement: Integrate openapi-typescript generated types here.
  */
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000/v1';
+const configuredApiBase = import.meta.env.VITE_API_BASE?.trim();
+const isBrowser = typeof window !== 'undefined';
+const isLocalHost =
+  isBrowser &&
+  (window.location.hostname === 'localhost' ||
+    window.location.hostname === '127.0.0.1' ||
+    window.location.hostname === '[::1]');
+
+const API_BASE = configuredApiBase || (isLocalHost ? 'http://127.0.0.1:8000/v1' : '/api/v1');
 
 interface RequestOptions extends RequestInit {
   apiKey?: string;
