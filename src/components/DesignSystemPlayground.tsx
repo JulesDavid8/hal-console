@@ -10,7 +10,16 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { Activity, ChevronRight, FlaskConical, Play, Radio, TrendingUp } from 'lucide-react';
+import {
+  Activity,
+  BookOpen,
+  ChevronRight,
+  FlaskConical,
+  Globe2,
+  Play,
+  Radio,
+  TrendingUp,
+} from 'lucide-react';
 
 import { Button } from '../design-system/primitives/Button';
 import { Card } from '../design-system/primitives/Card';
@@ -19,6 +28,15 @@ import { Badge } from '../design-system/primitives/Badge';
 import { Spinner } from '../design-system/primitives/Spinner';
 import { Combobox, type ComboboxOption } from '../design-system/primitives/Combobox';
 import { api } from '../lib/api/client';
+import type {
+  LabIntelligenceResponse,
+  LiveSignalBundle,
+  SignalHistoryPage,
+  SignalInsight,
+  SignalScenario,
+  SignalSnapshot,
+  StockDecisionSnapshot,
+} from '../features/market/types';
 
 const POPULAR_TICKERS: ComboboxOption[] = [
   { value: 'AAPL', label: 'Apple Inc.', description: 'Technology' },
@@ -37,96 +55,7 @@ const POPULAR_TICKERS: ComboboxOption[] = [
 
 const LOOKBACK_OPTIONS = [30, 90, 180, 365];
 
-type LabTab = 'price' | 'signal' | 'scenario';
-
-interface PriceHistoryPoint {
-  ticker: string;
-  as_of: string;
-  open: string;
-  high: string;
-  low: string;
-  close: string;
-  adjusted_close: string;
-  volume: number;
-  sma_20?: string | null;
-  sma_50?: string | null;
-}
-
-interface StockDecisionSnapshot {
-  ticker: string;
-  as_of: string;
-  lookback_days: number;
-  trend_label: 'uptrend' | 'downtrend' | 'sideways';
-  latest_adjusted_close: string;
-  latest_volume: number;
-  average_volume_20d?: number | null;
-  relative_volume_20d?: number | null;
-  change_1d_pct?: number | null;
-  change_5d_pct?: number | null;
-  change_20d_pct?: number | null;
-  high_52w: string;
-  low_52w: string;
-  distance_from_52w_high_pct?: number | null;
-  distance_from_52w_low_pct?: number | null;
-  volatility_20d_pct?: number | null;
-  records: PriceHistoryPoint[];
-}
-
-interface SignalSnapshot {
-  ticker: string;
-  as_of: string;
-  sentiment_score: number;
-  buy_txn_count: number;
-  sell_txn_count: number;
-  net_notional: string;
-}
-
-interface SignalInsight {
-  ticker: string;
-  as_of: string;
-  sentiment_score: number;
-  sentiment_label: string;
-  pressure_label: string;
-  market_average_score?: number | null;
-  relative_strength?: number | null;
-  percentile?: number | null;
-}
-
-interface SignalHistoryPoint {
-  ticker: string;
-  as_of: string;
-  sentiment_score: number;
-  sentiment_label: string;
-  pressure_label: string;
-  market_average_score?: number | null;
-  relative_strength?: number | null;
-}
-
-interface SignalHistoryPage {
-  ticker: string;
-  records: SignalHistoryPoint[];
-  next_cursor?: string | null;
-}
-
-interface SignalCatalyst {
-  code: string;
-  label: string;
-  description: string;
-  value: number;
-  contribution: number;
-  direction: 'bullish' | 'bearish' | 'neutral';
-}
-
-interface SignalScenario {
-  ticker: string;
-  as_of: string;
-  lookback_days: number;
-  scenario_score: number;
-  confidence: number;
-  regime: string;
-  summary: string;
-  catalysts: SignalCatalyst[];
-}
+type LabTab = 'price' | 'signal' | 'scenario' | 'intelligence';
 
 const toNumber = (value: string | number | null | undefined): number | null => {
   if (typeof value === 'number') {
@@ -206,6 +135,16 @@ const badgeForSentiment = (score: number): 'success' | 'warning' | 'danger' => {
   return 'warning';
 };
 
+const badgeForDirection = (direction: 'bullish' | 'bearish' | 'neutral'): 'success' | 'danger' | 'warning' => {
+  if (direction === 'bullish') {
+    return 'success';
+  }
+  if (direction === 'bearish') {
+    return 'danger';
+  }
+  return 'warning';
+};
+
 function buildErrorMessage(error: unknown): string {
   if (error instanceof Error && error.message.trim()) {
     return error.message;
@@ -213,8 +152,16 @@ function buildErrorMessage(error: unknown): string {
   return 'Unable to load Lab results. Verify API connectivity and try again.';
 }
 
-export function DesignSystemPlayground() {
-  const [tickerInput, setTickerInput] = useState('MSFT');
+interface DesignSystemPlaygroundProps {
+  initialTicker?: string;
+  onOpenGuide?: () => void;
+}
+
+export function DesignSystemPlayground({
+  initialTicker = 'MSFT',
+  onOpenGuide,
+}: DesignSystemPlaygroundProps) {
+  const [tickerInput, setTickerInput] = useState(initialTicker.toUpperCase());
   const [lookbackDays, setLookbackDays] = useState<number>(180);
   const [activeTab, setActiveTab] = useState<LabTab>('price');
   const [autoRun, setAutoRun] = useState(true);
@@ -228,43 +175,53 @@ export function DesignSystemPlayground() {
   const [insight, setInsight] = useState<SignalInsight | null>(null);
   const [history, setHistory] = useState<SignalHistoryPage | null>(null);
   const [scenario, setScenario] = useState<SignalScenario | null>(null);
+  const [intelligence, setIntelligence] = useState<LabIntelligenceResponse | null>(null);
+  const [intelError, setIntelError] = useState<string | null>(null);
 
   const runLab = useCallback(
     async (tickerOverride?: string) => {
       const targetTicker = (tickerOverride ?? tickerInput).trim().toUpperCase();
 
-      if (!targetTicker || !/^[A-Z.-]{1,10}$/.test(targetTicker)) {
-        setError('Enter a valid ticker (letters, dash, or dot; up to 10 chars).');
+      if (!targetTicker || !/^[A-Z0-9.-]{1,12}$/.test(targetTicker)) {
+        setError('Enter a valid ticker (letters, numbers, dash, or dot; up to 12 chars).');
         return;
       }
 
       setTickerInput(targetTicker);
       setLoading(true);
       setError(null);
+      setIntelError(null);
 
       try {
-        const [decisionResult, signalResult, insightResult, historyResult, scenarioResult] =
-          await Promise.allSettled([
-            api.get<StockDecisionSnapshot>(
-              `/signals/${targetTicker}/decision?lookback_days=${lookbackDays}`
-            ),
-            api.get<SignalSnapshot>(`/signals/${targetTicker}`),
-            api.get<SignalInsight>(`/signals/${targetTicker}/insight`),
-            api.get<SignalHistoryPage>(`/signals/${targetTicker}/history?limit=40`),
-            api.get<SignalScenario>(
-              `/signals/${targetTicker}/scenario?lookback_days=${lookbackDays}`
-            ),
-          ]);
+        const [bundleResult, intelligenceResult] = await Promise.allSettled([
+          api.get<LiveSignalBundle>(
+            `/signals/${targetTicker}/bundle?lookback_days=${lookbackDays}&history_limit=40`
+          ),
+          api.get<LabIntelligenceResponse>(
+            `/lab/intel/${targetTicker}?lookback_days=${lookbackDays}`
+          ),
+        ]);
 
-        if (decisionResult.status === 'rejected') {
-          throw decisionResult.reason;
+        if (bundleResult.status !== 'fulfilled') {
+          throw bundleResult.reason;
         }
 
-        setDecision(decisionResult.value);
-        setSignal(signalResult.status === 'fulfilled' ? signalResult.value : null);
-        setInsight(insightResult.status === 'fulfilled' ? insightResult.value : null);
-        setHistory(historyResult.status === 'fulfilled' ? historyResult.value : null);
-        setScenario(scenarioResult.status === 'fulfilled' ? scenarioResult.value : null);
+        const bundle = bundleResult.value;
+
+        setDecision(bundle.decision);
+        setSignal(bundle.signal);
+        setInsight(bundle.insight);
+        setHistory(bundle.history);
+        setScenario(bundle.scenario);
+
+        if (intelligenceResult.status === 'fulfilled') {
+          setIntelligence(intelligenceResult.value);
+        } else {
+          setIntelligence(null);
+          const detail = buildErrorMessage(intelligenceResult.reason);
+          setIntelError(`Intelligence engine delayed: ${detail}`);
+        }
+
         setLastUpdatedAt(new Date().toISOString());
       } catch (runError: unknown) {
         setError(buildErrorMessage(runError));
@@ -273,6 +230,7 @@ export function DesignSystemPlayground() {
         setInsight(null);
         setHistory(null);
         setScenario(null);
+        setIntelligence(null);
       } finally {
         setLoading(false);
       }
@@ -327,6 +285,16 @@ export function DesignSystemPlayground() {
   const high52w = toNumber(decision?.high_52w);
   const low52w = toNumber(decision?.low_52w);
   const lagDays = decision ? dayLagFromIsoDate(decision.as_of) : 0;
+  const scenarioCatalysts = scenario?.catalysts ?? [];
+  const macroPulseEntries = intelligence
+    ? [
+        { key: 'market', label: 'Market', value: intelligence.macro_pulse.market },
+        { key: 'economic', label: 'Economic', value: intelligence.macro_pulse.economic },
+        { key: 'political', label: 'Political', value: intelligence.macro_pulse.political },
+        { key: 'technology', label: 'Technology', value: intelligence.macro_pulse.technology },
+        { key: 'conflict', label: 'Conflict', value: intelligence.macro_pulse.conflict },
+      ]
+    : [];
 
   return (
     <div className="space-y-6">
@@ -348,6 +316,12 @@ export function DesignSystemPlayground() {
             <Badge variant={autoRun ? 'success' : 'neutral'}>
               {autoRun ? 'Live Preview ON' : 'Manual Run'}
             </Badge>
+            {onOpenGuide && (
+              <Button type="button" variant="ghost" size="sm" onClick={onOpenGuide}>
+                <BookOpen className="h-4 w-4" />
+                Learn Lab
+              </Button>
+            )}
             {lastUpdatedAt && (
               <span className="text-xs text-hal-muted">
                 Updated {new Date(lastUpdatedAt).toLocaleTimeString()}
@@ -558,6 +532,15 @@ export function DesignSystemPlayground() {
                     <Radio className="h-4 w-4" />
                     Scenario Readout
                   </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={activeTab === 'intelligence' ? 'primary' : 'ghost'}
+                    onClick={() => setActiveTab('intelligence')}
+                  >
+                    <Globe2 className="h-4 w-4" />
+                    Intelligence Engine
+                  </Button>
                 </div>
 
                 {activeTab === 'price' && (
@@ -739,7 +722,7 @@ export function DesignSystemPlayground() {
                           <div className="text-xs uppercase tracking-[0.16em] text-hal-muted">
                             Catalyst Breakdown
                           </div>
-                          {scenario.catalysts.slice(0, 6).map((catalyst) => (
+                          {scenarioCatalysts.slice(0, 6).map((catalyst) => (
                             <div
                               key={`${catalyst.code}-${catalyst.label}`}
                               className="hal-panel bg-hal-panel-soft px-3 py-2"
@@ -773,6 +756,154 @@ export function DesignSystemPlayground() {
                       <p className="text-sm text-hal-muted">
                         Scenario readout is currently unavailable for this ticker.
                       </p>
+                    )}
+                  </div>
+                )}
+
+                {activeTab === 'intelligence' && (
+                  <div className="space-y-4">
+                    {intelligence ? (
+                      <>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                          <div className="hal-panel bg-hal-panel-soft p-3">
+                            <div className="text-xs uppercase tracking-[0.14em] text-hal-muted">
+                              Reaction Outlook
+                            </div>
+                            <div className="mt-2">
+                              <Badge variant={badgeForDirection(intelligence.reaction_outlook.direction)}>
+                                {intelligence.reaction_outlook.direction}
+                              </Badge>
+                            </div>
+                            <div className="text-xs text-hal-muted mt-2">
+                              Horizon {intelligence.reaction_outlook.horizon} · Confidence{' '}
+                              {(intelligence.reaction_outlook.confidence * 100).toFixed(1)}%
+                            </div>
+                          </div>
+                          <div className="hal-panel bg-hal-panel-soft p-3">
+                            <div className="text-xs uppercase tracking-[0.14em] text-hal-muted">
+                              Unusual Flow
+                            </div>
+                            <div className="mt-2">
+                              <Badge variant={intelligence.unusual_flow.detected ? 'warning' : 'neutral'}>
+                                {intelligence.unusual_flow.detected ? 'Detected' : 'Normal'}
+                              </Badge>
+                            </div>
+                            <div className="text-xs text-hal-muted mt-2">
+                              Baseline {formatCompact(intelligence.unusual_flow.baseline_abs_notional)} · Current{' '}
+                              {formatCompact(intelligence.unusual_flow.current_abs_notional)}
+                            </div>
+                          </div>
+                          <div className="hal-panel bg-hal-panel-soft p-3">
+                            <div className="text-xs uppercase tracking-[0.14em] text-hal-muted">
+                              Context Strength
+                            </div>
+                            <div className="text-lg font-medium mt-1">
+                              {(intelligence.signal_context.sentiment_score * 100).toFixed(0)}
+                            </div>
+                            <div className="text-xs text-hal-muted mt-1">
+                              Regime {intelligence.signal_context.regime}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="hal-panel bg-hal-panel-soft p-3">
+                          <div className="text-xs uppercase tracking-[0.14em] text-hal-muted mb-1">
+                            Engine Summary
+                          </div>
+                          <p className="text-sm text-hal-text-soft">
+                            {intelligence.reaction_outlook.summary}
+                          </p>
+                          <p className="text-xs text-hal-muted mt-2">
+                            {intelligence.unusual_flow.explanation}
+                          </p>
+                        </div>
+
+                        <div>
+                          <div className="text-xs uppercase tracking-[0.16em] text-hal-muted mb-2">
+                            Macro Pulse
+                          </div>
+                          <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+                            {macroPulseEntries.map((entry) => (
+                              <div key={entry.key} className="hal-panel bg-hal-panel-soft px-3 py-2">
+                                <div className="text-[11px] uppercase tracking-[0.12em] text-hal-muted">
+                                  {entry.label}
+                                </div>
+                                <div className="text-base font-medium mt-1">
+                                  {entry.value > 0 ? '+' : ''}
+                                  {entry.value.toFixed(2)}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className="text-xs uppercase tracking-[0.16em] text-hal-muted mb-2">
+                            Decision Drivers
+                          </div>
+                          <div className="space-y-2">
+                            {intelligence.drivers.map((driver, index) => (
+                              <div key={`${driver.title}-${index}`} className="hal-panel bg-hal-panel-soft px-3 py-3">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <div className="text-sm font-medium">{driver.title}</div>
+                                  <div className="flex items-center gap-2">
+                                    <Badge variant={badgeForDirection(driver.direction)}>{driver.direction}</Badge>
+                                    <span className="text-xs text-hal-muted">Weight {driver.weight.toFixed(2)}</span>
+                                  </div>
+                                </div>
+                                <p className="text-xs text-hal-muted mt-1">{driver.detail}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className="text-xs uppercase tracking-[0.16em] text-hal-muted mb-2">
+                            Live Event Feed
+                          </div>
+                          <div className="space-y-2">
+                            {intelligence.headlines.map((headline, index) => (
+                              <div key={`${headline.title}-${index}`} className="hal-panel bg-hal-panel-soft px-3 py-2.5">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <div className="flex items-center gap-2">
+                                    <Badge variant={badgeForDirection(headline.sentiment)}>
+                                      {headline.topic}
+                                    </Badge>
+                                    <span className="text-xs text-hal-muted">
+                                      Impact {headline.impact_score.toFixed(1)}
+                                    </span>
+                                  </div>
+                                  <span className="text-xs text-hal-muted">{headline.publisher}</span>
+                                </div>
+                                {headline.link ? (
+                                  <a
+                                    href={headline.link}
+                                    target="_blank"
+                                    rel="noreferrer noopener"
+                                    className="block text-sm text-hal-text-soft hover:text-hal-text mt-1"
+                                  >
+                                    {headline.title}
+                                  </a>
+                                ) : (
+                                  <div className="text-sm text-hal-text-soft mt-1">{headline.title}</div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="space-y-3">
+                        {intelError && (
+                          <Card className="border-hal-warning/40 bg-hal-warning/5 p-3">
+                            <p className="text-sm text-hal-warning">{intelError}</p>
+                          </Card>
+                        )}
+                        <p className="text-sm text-hal-muted">
+                          Intelligence engine is warming up for this ticker. Run analysis again to
+                          request macro/event synthesis.
+                        </p>
+                      </div>
                     )}
                   </div>
                 )}

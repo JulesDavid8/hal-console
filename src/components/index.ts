@@ -5,4 +5,3 @@
  * Feature-specific components should stay inside their feature folder.
  */
 export { AppShell } from './AppShell';
-export { Sidebar } from './Sidebar';

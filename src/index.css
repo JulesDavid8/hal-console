@@ -134,6 +134,15 @@ table,
   }
 }
 
+@keyframes hal-wire-scroll {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(calc(-100% - var(--hal-wire-gap, 1.5rem)));
+  }
+}
+
 .hal-opener-fade {
   animation: hal-fade-up 480ms ease-out both;
 }
@@ -154,12 +163,43 @@ table,
   animation: hal-sweep 1.5s ease-in-out infinite;
 }
 
+.hal-wire-marquee {
+  --hal-wire-gap: 1.75rem;
+  position: relative;
+  display: flex;
+  gap: var(--hal-wire-gap);
+  overflow: hidden;
+  mask-image: linear-gradient(90deg, transparent 0, black 4%, black 96%, transparent 100%);
+}
+
+.hal-wire-marquee__track {
+  display: flex;
+  align-items: center;
+  gap: var(--hal-wire-gap);
+  flex-shrink: 0;
+  min-width: max-content;
+  animation: hal-wire-scroll var(--hal-wire-duration, 72s) linear infinite;
+}
+
+.hal-wire-marquee:hover .hal-wire-marquee__track {
+  animation-play-state: paused;
+}
+
+.hal-wire-marquee--markets {
+  --hal-wire-duration: 54s;
+}
+
+.hal-wire-marquee--headlines {
+  --hal-wire-duration: 86s;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .hal-opener-fade,
   .hal-orbit,
   .hal-orbit-reverse,
   .hal-beacon,
-  .hal-progress-sweep {
+  .hal-progress-sweep,
+  .hal-wire-marquee__track {
     animation: none;
   }
 }

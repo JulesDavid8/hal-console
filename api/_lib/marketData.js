@@ -9,6 +9,21 @@ const NUMBER_FORMATTER = new Intl.NumberFormat('en-US', {
 });
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+const FRESHNESS_LEVEL_RANK = {
+  live: 0,
+  delayed: 1,
+  eod: 2,
+  stale: 3,
+  unavailable: 4,
+};
+const SESSION_FROM_MARKET_STATE = {
+  PRE: 'pre',
+  PREPRE: 'pre',
+  REGULAR: 'regular',
+  POST: 'post',
+  POSTPOST: 'post',
+  CLOSED: 'closed',
+};
 
 export function normalizeTicker(value) {
   const ticker = String(value ?? '')
@@ -28,6 +43,142 @@ export function parseIntQuery(value, min, max, fallback) {
     return fallback;
   }
   return clamp(parsed, min, max);
+}
+
+function parseTimestamp(value) {
+  const parsed = Date.parse(String(value ?? ''));
+  if (!Number.isFinite(parsed)) {
+    return null;
+  }
+  return parsed;
+}
+
+function computeLagSeconds(sourceTs, pulledTs) {
+  const sourceMillis = parseTimestamp(sourceTs);
+  const pulledMillis = parseTimestamp(pulledTs);
+  if (sourceMillis === null || pulledMillis === null) {
+    return null;
+  }
+  return Math.max(0, Math.floor((pulledMillis - sourceMillis) / 1000));
+}
+
+function deriveSessionFromUsClock(sourceTs) {
+  const parsed = parseTimestamp(sourceTs);
+  if (parsed === null) {
+    return 'unknown';
+  }
+
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    weekday: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(new Date(parsed));
+
+  const weekday = parts.find((part) => part.type === 'weekday')?.value ?? '';
+  const hour = Number(parts.find((part) => part.type === 'hour')?.value ?? '0');
+  const minute = Number(parts.find((part) => part.type === 'minute')?.value ?? '0');
+  const minutes = (hour * 60) + minute;
+
+  if (weekday === 'Sat' || weekday === 'Sun') {
+    return 'closed';
+  }
+  if (minutes < (4 * 60)) {
+    return 'closed';
+  }
+  if (minutes < ((9 * 60) + 30)) {
+    return 'pre';
+  }
+  if (minutes < (16 * 60)) {
+    return 'regular';
+  }
+  if (minutes < (20 * 60)) {
+    return 'post';
+  }
+  return 'closed';
+}
+
+function normalizeSession(rawSession, sourceTs) {
+  const normalized = String(rawSession ?? '').trim().toUpperCase();
+  if (normalized && SESSION_FROM_MARKET_STATE[normalized]) {
+    return SESSION_FROM_MARKET_STATE[normalized];
+  }
+  return deriveSessionFromUsClock(sourceTs);
+}
+
+function classifyFreshnessLevel(source, lagSeconds) {
+  if (lagSeconds === null) {
+    return 'unavailable';
+  }
+  if (source === 'stooq') {
+    return 'eod';
+  }
+  if (lagSeconds <= 120) {
+    return 'live';
+  }
+  if (lagSeconds <= 900) {
+    return 'delayed';
+  }
+  return 'stale';
+}
+
+function buildDataProvenance({
+  sourceTs,
+  pulledTs,
+  session,
+  source,
+  fallback = false,
+}) {
+  const normalizedSourceTs = sourceTs && parseTimestamp(sourceTs) !== null ? sourceTs : null;
+  const lagSeconds = computeLagSeconds(normalizedSourceTs, pulledTs);
+  return {
+    source_ts: normalizedSourceTs,
+    pulled_ts: pulledTs,
+    session: session || normalizeSession('', normalizedSourceTs),
+    lag_seconds: lagSeconds,
+    level: classifyFreshnessLevel(source, lagSeconds),
+    source,
+    fallback: Boolean(fallback),
+  };
+}
+
+export function summarizeProvenance(entries, pulledTs = new Date().toISOString()) {
+  const records = (entries ?? []).filter(Boolean);
+  if (!records.length) {
+    return buildDataProvenance({
+      sourceTs: null,
+      pulledTs,
+      session: 'unknown',
+      source: 'unavailable',
+      fallback: true,
+    });
+  }
+
+  const worst = records.reduce((carry, current) => {
+    const currentRank = FRESHNESS_LEVEL_RANK[current.level] ?? FRESHNESS_LEVEL_RANK.unavailable;
+    const carryRank = FRESHNESS_LEVEL_RANK[carry.level] ?? FRESHNESS_LEVEL_RANK.unavailable;
+    return currentRank > carryRank ? current : carry;
+  }, records[0]);
+
+  const maxLag = records
+    .map((record) => record.lag_seconds)
+    .filter((value) => Number.isFinite(value))
+    .reduce((maxLagValue, value) => Math.max(maxLagValue, value), 0);
+
+  const sourceSet = [...new Set(records.map((record) => record.source).filter(Boolean))];
+  const sessionSet = [...new Set(records.map((record) => record.session).filter(Boolean))];
+  const fallback = records.some((record) => record.fallback);
+
+  return {
+    source_ts: worst.source_ts ?? null,
+    pulled_ts: pulledTs,
+    session: sessionSet.length === 1 ? sessionSet[0] : sessionSet.length === 0 ? 'unknown' : 'mixed',
+    lag_seconds: Number.isFinite(maxLag) ? maxLag : null,
+    level: worst.level,
+    source: sourceSet.length === 1 ? sourceSet[0] : sourceSet.length === 0 ? 'unavailable' : 'mixed',
+    fallback,
+  };
 }
 
 const toFixedDecimalString = (value) => {
@@ -211,6 +362,65 @@ async function fetchYahooBars(ticker) {
   return mapYahooBars(ticker, payload);
 }
 
+function mapYahooQuote(ticker, payload, pulledTs) {
+  const result = payload?.chart?.result?.[0];
+  const meta = result?.meta ?? {};
+  const regularMarketPrice = Number(meta.regularMarketPrice);
+  const previousClose = Number(meta.previousClose);
+  const fallbackClose = Number(
+    result?.indicators?.quote?.[0]?.close?.[
+      (result?.indicators?.quote?.[0]?.close?.length ?? 1) - 1
+    ]
+  );
+  const price = Number.isFinite(regularMarketPrice)
+    ? regularMarketPrice
+    : Number.isFinite(fallbackClose)
+      ? fallbackClose
+      : null;
+
+  if (price === null) {
+    throw new Error(`No live quote returned for ${ticker}`);
+  }
+
+  const changePct =
+    Number.isFinite(previousClose) && previousClose !== 0
+      ? ((price / previousClose) - 1) * 100
+      : null;
+
+  const marketTime = Number(meta.regularMarketTime);
+  const sourceTs = Number.isFinite(marketTime)
+    ? new Date(marketTime * 1000).toISOString()
+    : null;
+  const session = normalizeSession(meta.marketState, sourceTs);
+  const freshness = buildDataProvenance({
+    sourceTs,
+    pulledTs,
+    session,
+    source: 'yahoo',
+    fallback: false,
+  });
+
+  return {
+    ticker,
+    price,
+    previousClose: Number.isFinite(previousClose) ? previousClose : null,
+    changePct: round(changePct, 3),
+    currency: meta.currency ?? 'USD',
+    exchangeName: meta.exchangeName ?? null,
+    asOf: sourceTs ?? pulledTs,
+    freshness,
+  };
+}
+
+async function fetchYahooQuote(ticker) {
+  const url = `${YAHOO_BASE}/${encodeURIComponent(
+    ticker
+  )}?interval=1m&range=1d&includePrePost=true&events=div%2Csplits`;
+  const payload = await fetchJson(url);
+  const pulledTs = new Date().toISOString();
+  return mapYahooQuote(ticker, payload, pulledTs);
+}
+
 async function fetchStooqBars(ticker) {
   const candidates = [
     `${ticker.toLowerCase()}.us`,
@@ -293,6 +503,49 @@ export async function fetchLiveBars(ticker) {
     return await fetchYahooBars(ticker);
   } catch (_yahooError) {
     return fetchStooqBars(ticker);
+  }
+}
+
+function buildQuoteFromBars(marketData, pulledTs) {
+  const bars = marketData?.bars ?? [];
+  if (!bars.length) {
+    throw new Error(`No quote bars available for ${marketData?.ticker ?? 'UNKNOWN'}`);
+  }
+
+  const latest = bars[bars.length - 1];
+  const previous = bars.length > 1 ? bars[bars.length - 2] : null;
+  const changePct =
+    previous && Number.isFinite(previous.adjustedClose) && previous.adjustedClose !== 0
+      ? ((latest.adjustedClose / previous.adjustedClose) - 1) * 100
+      : null;
+  const sourceTs = `${latest.date}T00:00:00.000Z`;
+  const freshness = buildDataProvenance({
+    sourceTs,
+    pulledTs,
+    session: 'closed',
+    source: 'stooq',
+    fallback: true,
+  });
+
+  return {
+    ticker: marketData.ticker,
+    price: latest.adjustedClose,
+    previousClose: previous?.adjustedClose ?? null,
+    changePct: round(changePct, 3),
+    currency: marketData.currency ?? 'USD',
+    exchangeName: marketData.exchangeName ?? null,
+    asOf: sourceTs,
+    freshness,
+  };
+}
+
+export async function fetchLiveQuote(ticker) {
+  try {
+    return await fetchYahooQuote(ticker);
+  } catch (_error) {
+    const pulledTs = new Date().toISOString();
+    const marketData = await fetchLiveBars(ticker);
+    return buildQuoteFromBars(marketData, pulledTs);
   }
 }
 
@@ -547,6 +800,7 @@ export async function buildLiveSignalBundle(ticker, options = {}) {
   const historyLimit = parseIntQuery(options.historyLimit, 1, 365, 40);
 
   const marketData = await fetchLiveBars(ticker);
+  const quote = await fetchLiveQuote(ticker).catch(() => null);
   const bars = marketData.bars;
 
   if (!bars.length) {
@@ -558,12 +812,23 @@ export async function buildLiveSignalBundle(ticker, options = {}) {
   const decision = buildDecisionFromBars(ticker, bars, lookbackDays);
   const insight = buildInsight(ticker, signal);
   const scenario = buildScenario(ticker, signal, history, lookbackDays);
+  const pulledAt = quote?.freshness?.pulled_ts ?? new Date().toISOString();
+  const provenance = quote?.freshness ?? buildDataProvenance({
+    sourceTs: null,
+    pulledTs: pulledAt,
+    session: 'unknown',
+    source: 'unavailable',
+    fallback: true,
+  });
 
   return {
     ticker,
     lookbackDays,
     historyLimit,
+    pulled_at: pulledAt,
+    provenance,
     marketData,
+    quote,
     signal,
     insight,
     history,

@@ -11,14 +11,13 @@ import { Button } from './design-system/primitives/Button';
 import { Card } from './design-system/primitives/Card';
 import { Spinner } from './design-system/primitives/Spinner';
 import { AppShell } from './components/AppShell';
-import { Sidebar } from './components/Sidebar';
 import { ProfileSwitcher } from './components/ProfileSwitcher';
 import { HalBootSequence } from './components/HalBootSequence';
 import { LazyBoundary } from './components/LazyBoundary';
-import { SignalCard } from './features/signals';
+import { api } from './lib/api/client';
 import { useUserStore } from './stores/userStore';
 
-type AppPage = 'home' | 'dashboard' | 'market' | 'alerts' | 'lab';
+type AppPage = 'home' | 'dashboard' | 'market' | 'alerts' | 'lab' | 'lab-guide';
 
 interface HubItem {
   id: AppPage;
@@ -27,6 +26,30 @@ interface HubItem {
   description: string;
   icon: LucideIcon;
 }
+
+interface SystemVersionPayload {
+  status: string;
+  checked_at: string;
+  environment: string | null;
+  source: string;
+  commit_sha: string | null;
+  commit_short: string | null;
+  commit_branch: string | null;
+  deployment_id: string | null;
+  deployment_url: string | null;
+}
+
+const BUILD_COMMIT = String(import.meta.env.VITE_BUILD_COMMIT ?? 'unknown');
+const BUILD_BRANCH = String(import.meta.env.VITE_BUILD_BRANCH ?? 'unknown');
+const BUILD_TIME = String(import.meta.env.VITE_BUILD_TIME ?? '');
+
+const formatBuildTime = (raw: string): string => {
+  const parsed = Date.parse(raw);
+  if (!Number.isFinite(parsed)) {
+    return 'unknown';
+  }
+  return new Date(parsed).toLocaleString();
+};
 
 const HUB_ITEMS: HubItem[] = [
   {
@@ -67,7 +90,7 @@ const HUB_ITEMS: HubItem[] = [
 ];
 
 const isAppPage = (value: string): value is AppPage =>
-  HUB_ITEMS.some((item) => item.id === value);
+  value === 'lab-guide' || HUB_ITEMS.some((item) => item.id === value);
 
 const DesignSystemPlayground = lazy(() =>
   import('./components/DesignSystemPlayground').then((module) => ({
@@ -93,6 +116,30 @@ const AlertsView = lazy(() =>
   }))
 );
 
+const LiveMarketBoard = lazy(() =>
+  import('./features/market').then((module) => ({
+    default: module.LiveMarketBoard,
+  }))
+);
+
+const LabGuideView = lazy(() =>
+  import('./features/lab/LabGuideView').then((module) => ({
+    default: module.LabGuideView,
+  }))
+);
+
+const MarketContextStrip = lazy(() =>
+  import('./components/MarketContextStrip').then((module) => ({
+    default: module.MarketContextStrip,
+  }))
+);
+
+const SystemHealthCard = lazy(() =>
+  import('./components/SystemHealthCard').then((module) => ({
+    default: module.SystemHealthCard,
+  }))
+);
+
 function App() {
   const [isBooting, setIsBooting] = useState(true);
   const [activePage, setActivePage] = useState<AppPage>(() => {
@@ -103,6 +150,20 @@ function App() {
     const stored = window.sessionStorage.getItem('hal-active-page');
     return stored && isAppPage(stored) ? stored : 'home';
   });
+  const [labTicker, setLabTicker] = useState(() => {
+    if (typeof window === 'undefined') {
+      return 'MSFT';
+    }
+    return window.sessionStorage.getItem('hal-lab-ticker') || 'MSFT';
+  });
+  const [alertsTickerContext, setAlertsTickerContext] = useState(() => {
+    if (typeof window === 'undefined') {
+      return 'MSFT';
+    }
+    return window.sessionStorage.getItem('hal-alert-ticker') || 'MSFT';
+  });
+  const [labReturnPage, setLabReturnPage] = useState<AppPage>('home');
+  const [systemVersion, setSystemVersion] = useState<SystemVersionPayload | null>(null);
   const { currentUser } = useUserStore();
   const pageHeadingRef = useRef<HTMLHeadingElement>(null);
 
@@ -118,8 +179,40 @@ function App() {
   }, [activePage]);
 
   useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.setItem('hal-lab-ticker', labTicker);
+    }
+  }, [labTicker]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.setItem('hal-alert-ticker', alertsTickerContext);
+    }
+  }, [alertsTickerContext]);
+
+  useEffect(() => {
     window.requestAnimationFrame(() => pageHeadingRef.current?.focus());
   }, [activePage]);
+
+  useEffect(() => {
+    let isMounted = true;
+    api
+      .get<SystemVersionPayload>('/system/version')
+      .then((payload) => {
+        if (isMounted) {
+          setSystemVersion(payload);
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setSystemVersion(null);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   if (isBooting) {
     return <HalBootSequence />;
@@ -132,25 +225,9 @@ function App() {
     </Card>
   );
 
-  const activeHubItem = HUB_ITEMS.find((item) => item.id === activePage);
-
-  const sidebarNavItems = HUB_ITEMS.map((item) => {
-    const Icon = item.icon;
-    return {
-      id: item.id,
-      label: item.label,
-      icon: <Icon className="h-4 w-4" />,
-      active: activePage === item.id,
-      onClick: () => setActivePage(item.id),
-    };
-  });
-
-  const marketSignals = [
-    { ticker: 'NVDA', sentiment: 0.84, change: 0.12 },
-    { ticker: 'MSFT', sentiment: 0.63, change: 0.05 },
-    { ticker: 'AAPL', sentiment: 0.41, change: -0.03 },
-    { ticker: 'AMZN', sentiment: 0.58, change: 0.08 },
-  ];
+  const activeHubItem = HUB_ITEMS.find(
+    (item) => item.id === (activePage === 'lab-guide' ? 'lab' : activePage)
+  );
 
   const renderLazyModule = (content: ReactNode) => (
     <LazyBoundary onReset={() => setActivePage('home')}>
@@ -158,8 +235,32 @@ function App() {
     </LazyBoundary>
   );
 
+  const openLabForTicker = (ticker: string) => {
+    const normalized = ticker.trim().toUpperCase();
+    if (!normalized) {
+      return;
+    }
+    setLabTicker(normalized);
+    if (activePage !== 'lab') {
+      setLabReturnPage(activePage);
+    }
+    setActivePage('lab');
+  };
+
+  const openAlertsForTicker = (ticker?: string) => {
+    const normalized = ticker?.trim().toUpperCase();
+    if (normalized) {
+      setAlertsTickerContext(normalized);
+    }
+    setActivePage('alerts');
+  };
+
   const renderHome = () => (
     <>
+      <div className="mb-5">
+        {renderLazyModule(<MarketContextStrip />)}
+      </div>
+
       <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-6">
         <div>
           <div className="uppercase tracking-[0.2em] text-hal-primary text-xs mb-1">Live System</div>
@@ -168,9 +269,9 @@ function App() {
           </h1>
         </div>
         <div className="text-sm text-hal-muted">
-          Universe: <span className="text-hal-text">S&amp;P 500</span>
+          Universe: <span className="text-hal-text">US + Global Markets</span>
           <br />
-          Last sync: <span className="text-hal-accent">just now</span>
+          Coverage: <span className="text-hal-accent">S&amp;P, Dow, Nasdaq, Russell, global ETFs, commodities</span>
         </div>
       </div>
 
@@ -180,19 +281,23 @@ function App() {
             <div className="text-hal-primary font-medium mb-1">Navigation Hub Always Available</div>
             <p className="text-hal-text-soft max-w-2xl">
               You can always move between Homepage, My Dashboard, Live Market, Alerts, and Lab
-              using the sidebar on desktop or bottom hub on mobile.
+              using the top command tabs on desktop or bottom hub on mobile.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button variant="secondary" size="sm" onClick={() => setActivePage('market')}>
               Open Live Market
             </Button>
-            <Button variant="secondary" size="sm" onClick={() => setActivePage('alerts')}>
+            <Button variant="secondary" size="sm" onClick={() => openAlertsForTicker(labTicker)}>
               Open Alerts
             </Button>
           </div>
         </div>
       </Card>
+
+      <div className="mb-6">
+        {renderLazyModule(<SystemHealthCard />)}
+      </div>
 
       <div className="space-y-6">
         <div>
@@ -200,7 +305,7 @@ function App() {
             <h2 className="text-xl font-medium tracking-tight">Ticker Explorer</h2>
             <div className="text-xs text-hal-muted">Live backend data</div>
           </div>
-          {renderLazyModule(<TickerExplorer />)}
+          {renderLazyModule(<TickerExplorer onOpenLabTicker={openLabForTicker} />)}
         </div>
 
         <div>
@@ -230,7 +335,7 @@ function App() {
           <p className="text-sm text-hal-muted mb-4">
             Configure event-driven alerts tied to your watchlist and signal preferences.
           </p>
-          <Button variant="secondary" size="sm" onClick={() => setActivePage('alerts')}>
+          <Button variant="secondary" size="sm" onClick={() => openAlertsForTicker(labTicker)}>
             Manage Alerts
           </Button>
         </Card>
@@ -261,21 +366,12 @@ function App() {
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        {marketSignals.map((signal) => (
-          <SignalCard
-            key={signal.ticker}
-            ticker={signal.ticker}
-            sentiment={signal.sentiment}
-            change={signal.change}
-          />
-        ))}
-      </div>
+      {renderLazyModule(<LiveMarketBoard onSelectTicker={openLabForTicker} />)}
 
       <Card>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-medium tracking-tight">News + Context</h2>
-          <Button variant="ghost" size="sm" onClick={() => setActivePage('alerts')}>
+          <Button variant="ghost" size="sm" onClick={() => openAlertsForTicker(labTicker)}>
             Create Alert From This View
           </Button>
         </div>
@@ -296,26 +392,74 @@ function App() {
             <h1 ref={pageHeadingRef} tabIndex={-1} className="text-3xl font-medium tracking-tight focus:outline-none">
               Alerts
             </h1>
-            {renderLazyModule(<AlertsView />)}
+            {renderLazyModule(
+              <AlertsView
+                onOpenLabTicker={openLabForTicker}
+                defaultTicker={alertsTickerContext}
+              />
+            )}
           </div>
         );
-      case 'lab':
+      case 'lab': {
+        const returnLabel = HUB_ITEMS.find((item) => item.id === labReturnPage)?.label ?? 'Homepage';
         return (
           <div className="space-y-4">
-            <h1 ref={pageHeadingRef} tabIndex={-1} className="text-3xl font-medium tracking-tight focus:outline-none">
-              Lab
-            </h1>
-            <p className="text-hal-muted">
-              Tune inputs and watch decision outputs update in real time.
-            </p>
-            {renderLazyModule(<DesignSystemPlayground />)}
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h1 ref={pageHeadingRef} tabIndex={-1} className="text-3xl font-medium tracking-tight focus:outline-none">
+                  Lab
+                </h1>
+                <p className="text-hal-muted">
+                  Tune inputs and watch decision outputs update in real time.
+                </p>
+              </div>
+              <Button type="button" variant="secondary" size="sm" onClick={() => setActivePage(labReturnPage)}>
+                Back To {returnLabel}
+              </Button>
+            </div>
+            {renderLazyModule(
+              <DesignSystemPlayground
+                key={labTicker}
+                initialTicker={labTicker}
+                onOpenGuide={() => setActivePage('lab-guide')}
+              />
+            )}
           </div>
         );
+      }
+      case 'lab-guide': {
+        return (
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h1 ref={pageHeadingRef} tabIndex={-1} className="text-3xl font-medium tracking-tight focus:outline-none">
+                  Lab Guide
+                </h1>
+                <p className="text-hal-muted">
+                  Learn exactly how to use the Lab and how its intelligence engine improves decision quality.
+                </p>
+              </div>
+              <Button type="button" variant="secondary" size="sm" onClick={() => setActivePage('lab')}>
+                Back To Lab
+              </Button>
+            </div>
+            {renderLazyModule(<LabGuideView onBackToLab={() => setActivePage('lab')} />)}
+          </div>
+        );
+      }
       case 'home':
       default:
         return renderHome();
     }
   };
+
+  const commitLabel = systemVersion?.commit_short || BUILD_COMMIT.slice(0, 12);
+  const branchLabel = systemVersion?.commit_branch || BUILD_BRANCH;
+  const deploymentLabel = systemVersion?.deployment_id
+    ? systemVersion.deployment_id.slice(-8)
+    : 'n/a';
+  const environmentLabel = systemVersion?.environment || 'unknown';
+  const buildTimeLabel = formatBuildTime(BUILD_TIME);
 
   return (
     <>
@@ -326,7 +470,7 @@ function App() {
         Skip to main content
       </a>
       <AppShell
-      header={
+        header={
         <div className="px-4 sm:px-6 py-3 border-b border-hal-border bg-gradient-to-r from-hal-bg-1/40 via-transparent to-hal-bg-1/40">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
@@ -350,7 +494,9 @@ function App() {
           <div className="hidden lg:flex items-center gap-2 mt-3">
             {HUB_ITEMS.map((item) => {
               const Icon = item.icon;
-              const isActive = activePage === item.id;
+              const isActive = item.id === 'lab'
+                ? activePage === 'lab' || activePage === 'lab-guide'
+                : activePage === item.id;
               return (
                 <Button
                   key={item.id}
@@ -373,38 +519,50 @@ function App() {
             {activeHubItem?.label}: <span className="text-hal-text">{activeHubItem?.description}</span>
           </div>
         </div>
-      }
-      sidebar={<Sidebar navItems={sidebarNavItems} />}
-    >
-      <div className="max-w-[1400px] pb-20 lg:pb-0">{renderPage()}</div>
-
-      <nav className="fixed bottom-3 left-3 right-3 lg:hidden z-50 rounded-[14px] border border-hal-border bg-hal-bg-1/95 backdrop-blur-md px-2 py-1.5 shadow-xl">
-        <div className="grid grid-cols-5 gap-1">
-          {HUB_ITEMS.map((item) => {
-            const Icon = item.icon;
-            const isActive = activePage === item.id;
-
-            return (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => setActivePage(item.id)}
-                aria-current={isActive ? 'page' : undefined}
-                className={`flex flex-col items-center justify-center gap-1 rounded-[10px] min-h-12 py-2 text-[10px] transition-colors touch-manipulation active:scale-[0.98] ${
-                  isActive
-                    ? 'bg-hal-primary/15 text-hal-primary'
-                    : 'text-hal-text-soft hover:bg-hal-panel-soft hover:text-hal-text'
-                }`}
-                aria-label={`Open ${item.label}`}
-              >
-                <Icon className="h-4 w-4" />
-                <span>{item.mobileLabel}</span>
-              </button>
-            );
-          })}
+        }
+      >
+        <div className="max-w-[1400px] pb-20 lg:pb-0">
+          {renderPage()}
+          <footer className="mt-6 border-t border-hal-border pt-3 text-[11px] text-hal-muted">
+            <div className="flex flex-wrap gap-x-4 gap-y-1">
+              <span>Build {commitLabel}</span>
+              <span>Branch {branchLabel}</span>
+              <span>Deployment {deploymentLabel}</span>
+              <span>Env {environmentLabel}</span>
+              <span>Built {buildTimeLabel}</span>
+            </div>
+          </footer>
         </div>
-      </nav>
-    </AppShell>
+
+        <nav className="fixed bottom-3 left-3 right-3 lg:hidden z-50 rounded-[14px] border border-hal-border bg-hal-bg-1/95 backdrop-blur-md px-2 py-1.5 shadow-xl">
+          <div className="grid grid-cols-5 gap-1">
+            {HUB_ITEMS.map((item) => {
+              const Icon = item.icon;
+              const isActive = item.id === 'lab'
+                ? activePage === 'lab' || activePage === 'lab-guide'
+                : activePage === item.id;
+
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setActivePage(item.id)}
+                  aria-current={isActive ? 'page' : undefined}
+                  className={`flex flex-col items-center justify-center gap-1 rounded-[10px] min-h-14 py-2 text-[11px] transition-colors touch-manipulation active:scale-[0.98] ${
+                    isActive
+                      ? 'bg-hal-primary/15 text-hal-primary'
+                      : 'text-hal-text-soft hover:bg-hal-panel-soft hover:text-hal-text'
+                  }`}
+                  aria-label={`Open ${item.label}`}
+                >
+                  <Icon className="h-[18px] w-[18px]" />
+                  <span>{item.mobileLabel}</span>
+                </button>
+              );
+            })}
+          </div>
+        </nav>
+      </AppShell>
     </>
   );
 }
